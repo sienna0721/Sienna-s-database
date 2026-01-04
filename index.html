@@ -108,7 +108,7 @@
 
     <input type="text" id="hidden-input" autofocus autocomplete="off">
 
-    <script>
+       <script>
         const output = document.getElementById('output');
         const input = document.getElementById('hidden-input');
         
@@ -118,47 +118,90 @@
             'Stay tuned for more!'
         ];
 
+        let queue = [];
+        let isTyping = false;
+        const typingSpeed = 50; // 你可以在這裡統一調整速度 (ms)
+
         function focusInput() { input.focus(); }
         setInterval(focusInput, 100);
 
-        async function autoType(lines) {
-            for (let line of lines) {
-                output.innerHTML += "> ";
-                for (let char of line) {
-                    output.innerText += char;
-                    await new Promise(r => setTimeout(r, 40));
+        // 核心打字機函數：處理排隊中的字元
+        async function processQueue() {
+            if (queue.length > 0 && !isTyping) {
+                isTyping = true;
+                while (queue.length > 0) {
+                    const char = queue.shift();
+                    
+                    if (char === "\n") {
+                        output.innerHTML += "<br>> ";
+                    } else if (char === "INITIAL_PROMPT") {
+                        output.innerHTML += "> ";
+                    } else {
+                        // 使用 textContent 確保特殊字元不會被當成 HTML
+                        const tempSpan = document.createElement('span');
+                        tempSpan.textContent = char;
+                        output.appendChild(tempSpan);
+                    }
+                    
+                    // 同步滾動到底部
+                    window.scrollTo(0, document.body.scrollHeight);
+                    await new Promise(r => setTimeout(r, typingSpeed));
                 }
-                output.innerHTML += "<br>";
-                await new Promise(r => setTimeout(r, 300));
+                isTyping = false;
             }
-            output.innerHTML += "> ";
         }
 
+        // 修改開場動畫：改為放入隊列執行
+        function startWelcome() {
+            welcomeText.forEach((line, index) => {
+                queue.push("INITIAL_PROMPT");
+                queue.push(...line.split(""));
+                queue.push("\n");
+            });
+            processQueue();
+        }
+
+        // 監控 Text Blaze 輸入
+        input.addEventListener('input', (e) => {
+            // Text Blaze 噴出來的字會被丟進隊列
+            const inputText = e.data || "";
+            if (inputText) {
+                queue.push(...inputText.split(""));
+                e.target.value = ""; // 清空輸入框緩衝
+                processQueue();
+            }
+        });
+
         input.addEventListener('keydown', (e) => {
+            // 攔截快捷鍵
             if ((e.ctrlKey || e.metaKey) && (e.key === 'l' || e.key === 'e' || e.key === 'k')) e.preventDefault();
+            
+            // 處理 Enter：轉化為隊列中的換行
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                queue.push("\n");
+                processQueue();
+            }
+
+            // 處理 Backspace：即時刪除（不排隊）
             if (e.key === 'Backspace') {
                 let text = output.innerText;
-                if (text.endsWith('> ')) { e.preventDefault(); return; }
-                if (output.innerHTML.endsWith('<br>')) {
-                    output.innerHTML = output.innerHTML.slice(0, -4);
+                if (text.endsWith('> ')) return;
+                
+                if (output.innerHTML.endsWith('<br>> ')) {
+                    output.innerHTML = output.innerHTML.slice(0, -6);
                 } else {
-                    output.innerText = text.substring(0, text.length - 1);
+                    // 刪除最後一個節點或字元
+                    if (output.lastChild) output.removeChild(output.lastChild);
                 }
-            } else if (e.key === 'Enter') {
-                output.innerHTML += "<br>> ";
-                input.value = "";
             }
         });
 
-        input.addEventListener('input', (e) => {
-            if (e.inputType !== 'deleteContentBackward') {
-                output.innerText += e.data || "";
-                input.value = ""; 
-                window.scrollTo(0, document.body.scrollHeight);
-            }
-        });
-
-        window.onload = () => { focusInput(); autoType(welcomeText); };
+        window.onload = () => {
+            focusInput();
+            startWelcome(); // 執行一致的開場邏輯
+        };
     </script>
+
 </body>
 </html>
